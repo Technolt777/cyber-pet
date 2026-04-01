@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Erweitertes Tamagotchi mit Speicherfunktion</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .game-container {
+            background-color: #34495e;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 360px;
+            text-align: center;
+            position: relative;
+        }
+        .pet-display {
+            font-size: 80px;
+            margin: 20px 0;
+            min-height: 100px;
+            transition: transform 0.2s;
+        }
+        .pet-display:hover {
+            transform: scale(1.1);
+        }
+        .stats-container {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        .stat-bar {
+            width: 100%;
+            background-color: #7f8c8d;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+        .stat-fill {
+            height: 15px;
+            border-radius: 10px;
+            transition: width 0.3s;
+        }
+        #hunger-fill { background-color: #e67e22; }
+        #joy-fill { background-color: #f1c40f; }
+        #energy-fill { background-color: #3498db; }
+        #health-fill { background-color: #e74c3c; }
+        
+        .header-stats {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 15px;
+            background: #2c3e50;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        button {
+            background-color: #1abc9c;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #16a085;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .btn-danger {
+            background-color: #c0392b;
+            font-size: 0.8em;
+            padding: 8px 12px;
+            margin-top: 20px;
+        }
+        .btn-danger:hover {
+            background-color: #e74c3c;
+        }
+        .shop-area {
+            margin-top: 20px;
+            border-top: 2px dashed #7f8c8d;
+            padding-top: 15px;
+        }
+        #message-board {
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: #bdc3c7;
+            min-height: 40px;
+            font-style: italic;
+        }
+        .save-indicator {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 0.8em;
+            color: #2ecc71;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <div id="save-icon" class="save-indicator">💾 Gespeichert</div>
+    <h2>Cyber-Pet 3000</h2>
+    
+    <div class="header-stats">
+        <span>Level: <span id="level">1</span> (XP: <span id="xp">0</span>/100)</span>
+        <span>💰 <span id="coins">0</span></span>
+    </div>
+
+    <div class="pet-display" id="pet-face">😊</div>
+
+    <div class="stats-container">
+        <div>Hunger <span id="hunger-val">100</span>%</div>
+        <div class="stat-bar"><div id="hunger-fill" class="stat-fill" style="width: 100%;"></div></div>
+        
+        <div>Freude <span id="joy-val">100</span>%</div>
+        <div class="stat-bar"><div id="joy-fill" class="stat-fill" style="width: 100%;"></div></div>
+        
+        <div>Energie <span id="energy-val">100</span>%</div>
+        <div class="stat-bar"><div id="energy-fill" class="stat-fill" style="width: 100%;"></div></div>
+        
+        <div>Gesundheit <span id="health-val">100</span>%</div>
+        <div class="stat-bar"><div id="health-fill" class="stat-fill" style="width: 100%;"></div></div>
+    </div>
+
+    <div class="actions">
+        <button onclick="feed()">🍎 Füttern</button>
+        <button onclick="play()">🎾 Spielen</button>
+        <button onclick="sleep()">🛏️ Schlafen</button>
+        <button onclick="work()">💼 Arbeiten (-Energie, +💰)</button>
+        <button onclick="heal()">💊 Heilen</button>
+    </div>
+
+    <div class="shop-area">
+        <strong>🏪 Shop</strong><br>
+        <button onclick="buyPremiumFood()">🍕 Premium-Pizza (10 💰)</button>
+    </div>
+
+    <div id="message-board">Dein Pet ist bereit!</div>
+
+    <button class="btn-danger" onclick="resetGame()">🗑️ Spielstand löschen & Neu starten</button>
+</div>
+
+<script>
+    // Standard Spiel-Status
+    let defaultPet = {
+        hunger: 100,
+        joy: 100,
+        energy: 100,
+        health: 100,
+        coins: 0,
+        level: 1,
+        xp: 0,
+        isSleeping: false,
+        isDead: false
+    };
+
+    // Aktuelles Pet (wird beim Laden überschrieben, falls ein Savegame existiert)
+    let pet = { ...defaultPet };
+
+    const MAX_STAT = 100;
+    const XP_PER_LEVEL = 100;
+
+    // --- SPEICHER-FUNKTIONEN ---
+
+    function saveGame() {
+        if (pet.isDead) return; // Tote Pets werden nicht mehr gespeichert
+        localStorage.setItem('cyberPetSave', JSON.stringify(pet));
+        
+        // Kurzes Aufblinken des "Gespeichert"-Icons
+        const saveIcon = document.getElementById('save-icon');
+        saveIcon.style.opacity = '1';
+        setTimeout(() => { saveIcon.style.opacity = '0'; }, 1000);
+    }
+
+    function loadGame() {
+        const savedData = localStorage.getItem('cyberPetSave');
+        if (savedData) {
+            pet = JSON.parse(savedData);
+            logMessage("Spielstand erfolgreich geladen! Willkommen zurück.");
+        } else {
+            logMessage("Neues Spiel gestartet. Viel Spaß!");
+        }
+    }
+
+    function resetGame() {
+        if (confirm("Willst du wirklich von vorne anfangen? Dein aktueller Fortschritt geht komplett verloren.")) {
+            localStorage.removeItem('cyberPetSave');
+            location.reload(); // Lädt die Seite neu
+        }
+    }
+
+    // --- SPIEL-LOGIK ---
+
+    function updateUI() {
+        if (pet.isDead) return;
+
+        document.getElementById('hunger-fill').style.width = pet.hunger + '%';
+        document.getElementById('hunger-val').innerText = Math.round(pet.hunger);
+        
+        document.getElementById('joy-fill').style.width = pet.joy + '%';
+        document.getElementById('joy-val').innerText = Math.round(pet.joy);
+        
+        document.getElementById('energy-fill').style.width = pet.energy + '%';
+        document.getElementById('energy-val').innerText = Math.round(pet.energy);
+        
+        document.getElementById('health-fill').style.width = pet.health + '%';
+        document.getElementById('health-val').innerText = Math.round(pet.health);
+
+        document.getElementById('coins').innerText = pet.coins;
+        document.getElementById('level').innerText = pet.level;
+        document.getElementById('xp').innerText = pet.xp;
+
+        updateFace();
+    }
+
+    function updateFace() {
+        const face = document.getElementById('pet-face');
+        if (pet.isDead) {
+            face.innerText = "💀";
+            return;
+        }
+        if (pet.isSleeping) {
+            face.innerText = "😴";
+            return;
+        }
+        
+        if (pet.health < 30) face.innerText = "🤢";
+        else if (pet.joy < 30) face.innerText = "😢";
+        else if (pet.hunger < 30) face.innerText = "😫";
+        else if (pet.energy < 30) face.innerText = "🥱";
+        else face.innerText = "😊";
+    }
+
+    function logMessage(msg) {
+        document.getElementById('message-board').innerText = msg;
+    }
+
+    function addXP(amount) {
+        pet.xp += amount;
+        if (pet.xp >= XP_PER_LEVEL) {
+            pet.level++;
+            pet.xp -= XP_PER_LEVEL;
+            logMessage(`🎉 Level Up! Dein Pet ist jetzt Level ${pet.level}!`);
+        }
+    }
+
+    function feed() {
+        if (pet.isSleeping || pet.isDead) return logMessage("Dein Pet kann jetzt nicht essen.");
+        pet.hunger = Math.min(pet.hunger + 15, MAX_STAT);
+        addXP(5);
+        logMessage("Du fütterst dein Pet. Lecker!");
+        updateUI();
+        saveGame();
+    }
+
+    function play() {
+        if (pet.isSleeping || pet.isDead) return logMessage("Dein Pet kann jetzt nicht spielen.");
+        if (pet.energy < 15) return logMessage("Dein Pet ist zu müde zum Spielen!");
+        
+        pet.joy = Math.min(pet.joy + 20, MAX_STAT);
+        pet.energy -= 15;
+        pet.hunger -= 10;
+        addXP(10);
+        logMessage("Ihr spielt zusammen. Das macht Spaß!");
+        updateUI();
+        saveGame();
+    }
+
+    function sleep() {
+        if (pet.isDead) return;
+        pet.isSleeping = true;
+        logMessage("Dein Pet schläft jetzt. Zzz...");
+        updateUI();
+        saveGame();
+        
+        setTimeout(() => {
+            if (pet.isDead) return;
+            pet.isSleeping = false;
+            pet.energy = MAX_STAT;
+            logMessage("Dein Pet ist aufgewacht und voller Energie!");
+            updateUI();
+            saveGame();
+        }, 5000); // Schläft für 5 Sekunden
+    }
+
+    function work() {
+        if (pet.isSleeping || pet.isDead) return logMessage("Dein Pet kann jetzt nicht arbeiten.");
+        if (pet.energy < 25) return logMessage("Dein Pet ist zu erschöpft für die Arbeit.");
+        if (pet.joy < 20) return logMessage("Dein Pet ist zu traurig zum Arbeiten.");
+
+        pet.energy -= 25;
+        pet.joy -= 10;
+        pet.hunger -= 15;
+        let earned = Math.floor(Math.random() * 5) + 3;
+        pet.coins += earned;
+        addXP(15);
+        
+        logMessage(`Dein Pet hat gearbeitet und ${earned} 💰 verdient!`);
+        updateUI();
+        saveGame();
+    }
+
+    function heal() {
+        if (pet.isDead) return;
+        if (pet.health >= MAX_STAT) return logMessage("Dein Pet ist bereits kerngesund.");
+        pet.health = Math.min(pet.health + 30, MAX_STAT);
+        pet.joy -= 5;
+        logMessage("Du gibst deinem Pet Medizin. Es fühlt sich besser.");
+        updateUI();
+        saveGame();
+    }
+
+    function buyPremiumFood() {
+        if (pet.isDead) return;
+        if (pet.coins >= 10) {
+            pet.coins -= 10;
+            pet.hunger = Math.min(pet.hunger + 40, MAX_STAT);
+            pet.joy = Math.min(pet.joy + 10, MAX_STAT);
+            addXP(20);
+            logMessage("Premium-Pizza gekauft! Dein Pet liebt es!");
+            updateUI();
+            saveGame();
+        } else {
+            logMessage("Nicht genug Münzen! Geh arbeiten.");
+        }
+    }
+
+    // --- GAME LOOP ---
+    
+    setInterval(() => {
+        if (pet.isDead) return;
+
+        // Werte sinken mit der Zeit
+        if (!pet.isSleeping) {
+            pet.hunger -= 2;
+            pet.joy -= 1.5;
+            pet.energy -= 1;
+        }
+
+        // Wenn Hunger oder Freude zu niedrig, leidet die Gesundheit
+        if (pet.hunger < 20 || pet.joy < 20) {
+            pet.health -= 3;
+        }
+
+        // Grenzen einhalten
+        pet.hunger = Math.max(pet.hunger, 0);
+        pet.joy = Math.max(pet.joy, 0);
+        pet.energy = Math.max(pet.energy, 0);
+        pet.health = Math.max(pet.health, 0);
+
+        // Check auf Tod
+        if (pet.health <= 0) {
+            pet.isDead = true;
+            localStorage.removeItem('cyberPetSave'); // Lösche den Spielstand
+            logMessage("Oh nein! Dein Pet hat es nicht geschafft. Klicke auf 'Spielstand löschen' für ein neues Pet.");
+            updateFace();
+            return; // Abbrechen, kein Auto-Save mehr
+        }
+
+        updateUI();
+        saveGame(); // Automatisches Speichern jeden Tick
+    }, 2000); // Alle 2 Sekunden
+
+    // --- INITIALISIERUNG ---
+    loadGame(); // Beim Starten der Seite den Spielstand laden
+    updateUI(); // Benutzeroberfläche direkt aktualisieren
+</script>
+
+</body>
+</html>
